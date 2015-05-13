@@ -1,2 +1,2 @@
-# ligo
-A reactive programming environment
+# Ligo
+A reactive programming environment.
