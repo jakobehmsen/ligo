@@ -1,10 +1,12 @@
 package ligo;
 
+import ligo.lang.antlr4.LigoBaseVisitor;
 import ligo.lang.antlr4.LigoLexer;
 import ligo.lang.antlr4.LigoParser;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.atn.ATNConfigSet;
 import org.antlr.v4.runtime.dfa.DFA;
+import org.antlr.v4.runtime.misc.NotNull;
 import org.antlr.v4.runtime.tree.ErrorNode;
 import org.antlr.v4.runtime.tree.ParseTreeListener;
 import org.antlr.v4.runtime.tree.TerminalNode;
@@ -16,7 +18,13 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.BitSet;
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.*;
+import java.util.stream.IntStream;
 
 public class MainFrame extends JFrame {
     public static final String PRODUCT_NAME = "Ligo";
@@ -29,7 +37,14 @@ public class MainFrame extends JFrame {
     public MainFrame() {
         setTitle(PRODUCT_NAME);
 
-        canvas = new JPanel();
+        canvas = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+
+                graphicsConsumers.forEach(x -> x.accept(g));
+            }
+        };
 
         console = new JPanel(new BorderLayout());
         consoleHistory = new JTextPane();
@@ -107,6 +122,8 @@ public class MainFrame extends JFrame {
 
             LigoParser.ProgramContext programCtx = parser.program();
 
+            run(programCtx);
+
             String result;
             AttributeSet attr;
 
@@ -140,5 +157,113 @@ public class MainFrame extends JFrame {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private void run(LigoParser.ProgramContext programCtx) {
+        programCtx.statement().forEach(x -> {
+            Consumer<Object[]> statement = parseStatement(x, globals);
+            statement.accept(new Object[]{});
+        });
+    }
+
+    private DictCell globals = new DictCell();
+
+    private Consumer<Object[]> parseStatement(ParserRuleContext ctx, DictCell self) {
+        return ctx.accept(new LigoBaseVisitor<Consumer<Object[]>>() {
+            @Override
+            public Consumer<Object[]> visitAssign(@NotNull LigoParser.AssignContext ctx) {
+                String id = ctx.ID().getText();
+                Function<Object[], Cell> valueExpression = parseExpression(ctx.value, self);
+                
+                return args -> {
+                    DictCell target;
+
+                    if(ctx.target != null) {
+                        Function<Object[], Cell> targetExpression = parseExpression(ctx.target, self);
+                        target = (DictCell)targetExpression.apply(args);
+                    } else {
+                        target = self;
+                    }
+
+                    Cell valueCell = valueExpression.apply(args);
+                    target.put(id, valueCell);
+                };
+            }
+
+            @Override
+            public Consumer<Object[]> visitCall(@NotNull LigoParser.CallContext ctx) {
+                String name = ctx.ID().getText();
+                List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self)).collect(Collectors.toList());
+
+                Object[] arguments = new Object[argumentExpressions.size()];
+
+                return new Consumer<Object[]>() {
+                    @Override
+                    public void accept(Object[] args) {
+                        List<Cell> argumentCells = argumentExpressions.stream().map(x -> x.apply(args)).collect(Collectors.toList());
+                        List<Binding> argumentBindings = IntStream.range(0, argumentExpressions.size()).mapToObj(i -> {
+                            return argumentCells.get(i).consume(x -> {
+                                arguments[i] = x;
+                                update();
+                            });
+                        }).collect(Collectors.toList());
+                    }
+
+                    private void update() {
+                        if(Arrays.asList(arguments).stream().allMatch(x -> x != null)) {
+                            switch(name) {
+                                case "fillRect": {
+                                    addGraphicsConsumer(g -> {
+                                        BigDecimal x = (BigDecimal) arguments[0];
+                                        BigDecimal y = (BigDecimal) arguments[1];
+                                        BigDecimal width = (BigDecimal) arguments[2];
+                                        BigDecimal height = (BigDecimal) arguments[3];
+                                        g.fillRect(x.intValue(), y.intValue(), width.intValue(), height.intValue());
+                                    });
+                                }
+                            }
+                        }
+                    }
+                };
+            }
+        });
+    }
+
+    private void addGraphicsConsumer(Consumer<Graphics> graphicsConsumer) {
+        graphicsConsumers.add(graphicsConsumer);
+
+    }
+
+    private ArrayList<Consumer<Graphics>> graphicsConsumers = new ArrayList<>();
+
+    private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self) {
+        return ctx.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
+            @Override
+            public Function<Object[], Cell> visitNumber(@NotNull LigoParser.NumberContext ctx) {
+                BigDecimal value = new BigDecimal(ctx.NUMBER().getText());
+                return args -> new Singleton<>(value);
+            }
+
+            @Override
+            public Function<Object[], Cell> visitObject(@NotNull LigoParser.ObjectContext ctx) {
+                return args -> {
+                    DictCell obj = new DictCell();
+
+                    ctx.statement().forEach(x -> {
+                        Consumer<Object[]> statement = parseStatement(x, obj);
+                        statement.accept(new Object[]{});
+                    });
+
+                    return obj;
+                };
+            }
+
+            @Override
+            public Function<Object[], Cell> visitId(@NotNull LigoParser.IdContext ctx) {
+                String id = ctx.ID().getText();
+
+                return args -> self.get(id);
+            }
+        });
     }
 }

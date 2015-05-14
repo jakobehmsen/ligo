@@ -2,8 +2,8 @@ grammar Ligo;
 
 program: statement*;
 statement: assign | call;
-assign: (target=expression DOT)? name=ID ASSIGN_OP expression;
-call: name=ID OPEN_PAR (ID (COMMA ID)*)? CLOSE_PAR;
+assign: (target=expression DOT)? name=ID ASSIGN_OP value=expression;
+call: name=ID OPEN_PAR (expression (COMMA expression)*)? CLOSE_PAR;
 expression: id | number | string | object;
 id: ID;
 number: NUMBER;
