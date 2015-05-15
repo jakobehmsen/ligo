@@ -4,12 +4,7 @@ import ligo.lang.antlr4.LigoBaseVisitor;
 import ligo.lang.antlr4.LigoLexer;
 import ligo.lang.antlr4.LigoParser;
 import org.antlr.v4.runtime.*;
-import org.antlr.v4.runtime.atn.ATNConfigSet;
-import org.antlr.v4.runtime.dfa.DFA;
 import org.antlr.v4.runtime.misc.NotNull;
-import org.antlr.v4.runtime.tree.ErrorNode;
-import org.antlr.v4.runtime.tree.ParseTreeListener;
-import org.antlr.v4.runtime.tree.TerminalNode;
 
 import javax.swing.*;
 import javax.swing.text.*;
@@ -179,7 +174,9 @@ public class MainFrame extends JFrame {
                     DictCell target;
 
                     if(ctx.target != null) {
-                        Function<Object[], Cell> targetExpression = parseExpression(ctx.target, self);
+                        //Function<Object[], Cell> targetExpression = parseExpression(ctx.target, self);
+                        //target = (DictCell)targetExpression.apply(args);
+                        Function<Object[], Cell> targetExpression = parseTargetExpression(ctx.target, self);
                         target = (DictCell)targetExpression.apply(args);
                     } else {
                         target = self;
@@ -209,11 +206,16 @@ public class MainFrame extends JFrame {
                         }).collect(Collectors.toList());
                     }
 
+                    private Binding graphicsBinding;
+
                     private void update() {
                         if(Arrays.asList(arguments).stream().allMatch(x -> x != null)) {
                             switch(name) {
                                 case "fillRect": {
-                                    addGraphicsConsumer(g -> {
+                                    if(graphicsBinding != null)
+                                        graphicsBinding.remove();
+
+                                    graphicsBinding = addGraphicsConsumer(g -> {
                                         BigDecimal x = (BigDecimal) arguments[0];
                                         BigDecimal y = (BigDecimal) arguments[1];
                                         BigDecimal width = (BigDecimal) arguments[2];
@@ -229,9 +231,22 @@ public class MainFrame extends JFrame {
         });
     }
 
-    private void addGraphicsConsumer(Consumer<Graphics> graphicsConsumer) {
-        graphicsConsumers.add(graphicsConsumer);
+    private Function<Object[], Cell> parseTargetExpression(LigoParser.ExpressionContext target, DictCell self) {
+        return target.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
+            @Override
+            public Function<Object[], Cell> visitId(@NotNull LigoParser.IdContext ctx) {
+                String id = ctx.ID().getText();
 
+                return args -> self.getValueCell(id);
+            }
+        });
+    }
+
+    private Binding addGraphicsConsumer(Consumer<Graphics> graphicsConsumer) {
+        graphicsConsumers.add(graphicsConsumer);
+        canvas.repaint();
+
+        return () -> graphicsConsumers.remove(graphicsConsumer);
     }
 
     private ArrayList<Consumer<Graphics>> graphicsConsumers = new ArrayList<>();

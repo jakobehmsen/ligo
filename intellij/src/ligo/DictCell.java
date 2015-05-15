@@ -13,6 +13,7 @@ public class DictCell implements Cell {
 
     private static class SlotCell implements Cell {
         private ArrayList<CellConsumer> consumers = new ArrayList<>();
+        private Cell valueCell;
         private Binding valueCellBinding;
         private Object value;
 
@@ -30,6 +31,8 @@ public class DictCell implements Cell {
             if(valueCellBinding != null)
                 valueCellBinding.remove();
 
+            this.valueCell = valueCell;
+
             valueCellBinding = valueCell.consume(value -> {
                 this.value = value;
                 update();
@@ -38,6 +41,10 @@ public class DictCell implements Cell {
 
         private void update() {
             consumers.forEach(x -> x.next(value));
+        }
+
+        public Cell getValueCell() {
+            return valueCell;
         }
     }
 
@@ -57,5 +64,9 @@ public class DictCell implements Cell {
 
     public Cell get(String id) {
         return getSlot(id);
+    }
+
+    public Cell getValueCell(String id) {
+        return getSlot(id).getValueCell();
     }
 }
