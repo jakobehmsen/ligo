@@ -4,7 +4,7 @@ program: statement*;
 statement: assign | call;
 assign: (ID DOT)* name=ID ASSIGN_OP value=expression;
 call: name=ID OPEN_PAR (expression (COMMA expression)*)? CLOSE_PAR;
-expression: (id | number | string | object) accessChain;
+expression: (id | number | string | object | call) accessChain;
 accessChain: (DOT id)*;
 id: ID;
 number: NUMBER;

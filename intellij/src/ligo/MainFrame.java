@@ -14,6 +14,7 @@ import java.awt.event.KeyEvent;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
@@ -55,7 +56,7 @@ public class MainFrame extends JFrame {
         consolePending.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if(e.isControlDown() && e.getKeyCode() == KeyEvent.VK_ENTER) {
+                if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_ENTER) {
                     consoleRun();
                 }
             }
@@ -69,6 +70,12 @@ public class MainFrame extends JFrame {
         splitPane.setResizeWeight(0.75);
 
         getContentPane().add(splitPane, BorderLayout.CENTER);
+
+        // Define initial functions
+        functionMap.define("add", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.add(rhs));
+        functionMap.define("sub", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.subtract(rhs));
+        functionMap.define("div", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.divide(rhs, MathContext.DECIMAL128));
+        functionMap.define("mul", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.multiply(rhs));
     }
 
     private final SimpleAttributeSet okAttributeSet;
@@ -236,6 +243,7 @@ public class MainFrame extends JFrame {
     }
 
     private ArrayList<Consumer<Graphics>> graphicsConsumers = new ArrayList<>();
+    private FunctionMap functionMap = new FunctionMap();
 
     private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self) {
         return ctx.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
@@ -293,6 +301,64 @@ public class MainFrame extends JFrame {
 
                 return args -> self.get(id);
             }
+
+            @Override
+            public Function<Object[], Cell> visitCall(@NotNull LigoParser.CallContext ctx) {
+                String name = ctx.ID().getText();
+                List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self)).collect(Collectors.toList());
+
+                return createFunctionCall(name, argumentExpressions);
+            }
         });
+    }
+
+    private Function<Object[], Cell> createFunctionCall(String name, List<Function<Object[], Cell>> argumentExpressions) {
+        Object[] arguments = new Object[argumentExpressions.size()];
+
+        return args -> new Cell() {
+            @Override
+            public Binding consume(CellConsumer consumer) {
+                return new Binding() {
+                    FunctionMap.GenericFunction genericFunction = functionMap.getGenericFunction(new FunctionMap.GenericSelector(name, argumentExpressions.size()));
+                    Binding genericFunctionBinding = genericFunction.consume(f -> {
+                        this.functions = f;
+                        update();
+                    });
+                    Map<FunctionMap.SpecificSelector, FunctionMap.SpecificFunctionInfo> functions;
+                    List<Cell> argumentCells = argumentExpressions.stream().map(x -> x.apply(args)).collect(Collectors.toList());
+                    List<Binding> argumentBindings = IntStream.range(0, argumentExpressions.size()).mapToObj(i -> {
+                        return argumentCells.get(i).consume(x -> {
+                            arguments[i] = x;
+                            update();
+                        });
+                    }).collect(Collectors.toList());
+
+                    @Override
+                    public void remove() {
+                        argumentBindings.forEach(x -> x.remove());
+                        genericFunctionBinding.remove();
+                    }
+
+                    private void update() {
+                        if(Arrays.asList(arguments).stream().allMatch(x -> x != null)) {
+                            Object[] callArgs = arguments;
+                            Class<?>[] parameterTypes = Arrays.asList(callArgs).stream().map(x -> x.getClass()).toArray(s -> new Class<?>[callArgs.length]);
+
+                            if(functions != null) {
+                                FunctionMap.SpecificFunctionInfo function = FunctionMap.GenericFunction.resolve(functions, parameterTypes);
+
+                                if(function != null) {
+                                    Object[] locals = new Object[function.localCount];
+                                    System.arraycopy(callArgs, 0, locals, 0, callArgs.length);
+
+                                    Object next = function.body.apply(locals);
+                                    consumer.next(next);
+                                }
+                            }
+                        }
+                    }
+                };
+            }
+        };
     }
 }
