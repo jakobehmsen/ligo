@@ -2,9 +2,10 @@ grammar Ligo;
 
 program: statement*;
 statement: assign | call;
-assign: (target=expression DOT)? name=ID ASSIGN_OP value=expression;
+assign: (ID DOT)* name=ID ASSIGN_OP value=expression;
 call: name=ID OPEN_PAR (expression (COMMA expression)*)? CLOSE_PAR;
-expression: id | number | string | object;
+expression: (id | number | string | object) accessChain;
+accessChain: (DOT id)*;
 id: ID;
 number: NUMBER;
 string: STRING;

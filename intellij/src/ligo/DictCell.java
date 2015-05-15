@@ -2,16 +2,27 @@ package ligo;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-public class DictCell implements Cell {
+public class DictCell implements Cell<Map<String, Object>> {
+    private ArrayList<CellConsumer> consumers = new ArrayList<>();
     private Hashtable<String, SlotCell> slots = new Hashtable<>();
 
     @Override
-    public Binding consume(CellConsumer consumer) {
-        return null;
+    public Binding consume(CellConsumer<Map<String, Object>> consumer) {
+        consumers.add(consumer);
+
+        consumer.next(getVersion());
+
+        return () -> consumers.remove(consumer);
     }
 
-    private static class SlotCell implements Cell {
+    private Map<String, Object> getVersion() {
+        return slots.entrySet().stream().collect(Collectors.toMap(x -> x.getKey(), x -> x.getValue().value));
+    }
+
+    private class SlotCell implements Cell {
         private ArrayList<CellConsumer> consumers = new ArrayList<>();
         private Cell valueCell;
         private Binding valueCellBinding;
@@ -41,6 +52,10 @@ public class DictCell implements Cell {
 
         private void update() {
             consumers.forEach(x -> x.next(value));
+            if(DictCell.this.consumers.size() > 0) {
+                Map<String, Object> dictVersion = getVersion();
+                DictCell.this.consumers.forEach(x -> x.next(dictVersion));
+            }
         }
 
         public Cell getValueCell() {

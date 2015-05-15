@@ -167,20 +167,17 @@ public class MainFrame extends JFrame {
         return ctx.accept(new LigoBaseVisitor<Consumer<Object[]>>() {
             @Override
             public Consumer<Object[]> visitAssign(@NotNull LigoParser.AssignContext ctx) {
-                String id = ctx.ID().getText();
                 Function<Object[], Cell> valueExpression = parseExpression(ctx.value, self);
                 
                 return args -> {
-                    DictCell target;
+                    DictCell target = self;
 
-                    if(ctx.target != null) {
-                        //Function<Object[], Cell> targetExpression = parseExpression(ctx.target, self);
-                        //target = (DictCell)targetExpression.apply(args);
-                        Function<Object[], Cell> targetExpression = parseTargetExpression(ctx.target, self);
-                        target = (DictCell)targetExpression.apply(args);
-                    } else {
-                        target = self;
+                    for(int i = 0; i < ctx.ID().size() - 1; i++) {
+                        String accessId = ctx.ID().get(i).getText();
+                        target = (DictCell)target.getValueCell(accessId);
                     }
+
+                    String id = ctx.ID().get(ctx.ID().size() - 1).getText();
 
                     Cell valueCell = valueExpression.apply(args);
                     target.put(id, valueCell);
@@ -231,17 +228,6 @@ public class MainFrame extends JFrame {
         });
     }
 
-    private Function<Object[], Cell> parseTargetExpression(LigoParser.ExpressionContext target, DictCell self) {
-        return target.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
-            @Override
-            public Function<Object[], Cell> visitId(@NotNull LigoParser.IdContext ctx) {
-                String id = ctx.ID().getText();
-
-                return args -> self.getValueCell(id);
-            }
-        });
-    }
-
     private Binding addGraphicsConsumer(Consumer<Graphics> graphicsConsumer) {
         graphicsConsumers.add(graphicsConsumer);
         canvas.repaint();
@@ -253,6 +239,34 @@ public class MainFrame extends JFrame {
 
     private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self) {
         return ctx.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
+            @Override
+            public Function<Object[], Cell> visitExpression(@NotNull LigoParser.ExpressionContext ctx) {
+                Function<Object[], Cell> targetExpression = ctx.getChild(0).accept(this);
+                Function<Object[], Cell> expression = targetExpression;
+
+                // Be sensitive to the address, not the current cell at the address
+                for(LigoParser.IdContext idCtx: ctx.accessChain().id()) {
+                    String id = idCtx.getText();
+                    Function<Object[], Cell> targetExpressionTmp = targetExpression;
+                    expression = args -> {
+                        Cell target = targetExpressionTmp.apply(args);
+                        return new Cell() {
+                            @Override
+                            public Binding consume(CellConsumer consumer) {
+                                return target.consume(x -> {
+                                    Object value = ((Map<String, Object>)x).get(id);
+
+                                    consumer.next(value);
+                                });
+                            }
+                        };
+                    };
+                    targetExpression = expression;
+                }
+
+                return expression;
+            }
+
             @Override
             public Function<Object[], Cell> visitNumber(@NotNull LigoParser.NumberContext ctx) {
                 BigDecimal value = new BigDecimal(ctx.NUMBER().getText());
