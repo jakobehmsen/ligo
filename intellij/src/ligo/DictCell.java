@@ -19,7 +19,8 @@ public class DictCell implements Cell<Map<String, Object>> {
     }
 
     private Map<String, Object> getVersion() {
-        return slots.entrySet().stream().collect(Collectors.toMap(x -> x.getKey(), x -> x.getValue().value));
+        // Get version of map with slots that have values
+        return slots.entrySet().stream().filter(x -> x.getValue().value != null).collect(Collectors.toMap(x -> x.getKey(), x -> x.getValue().value));
     }
 
     private class SlotCell implements Cell {
