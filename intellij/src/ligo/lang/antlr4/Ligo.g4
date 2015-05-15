@@ -28,3 +28,5 @@ fragment OctalEscape: '\\' [0-3] [0-7] [0-7] | '\\' [0-7] [0-7] | '\\' [0-7];
 fragment UnicodeEscape: '\\' 'u' HexDigit HexDigit HexDigit HexDigit;
 
 WS: [ \n\t\r]+ -> skip;
+SINGLE_LINE_COMMENT: '//' ~('\r' | '\n')* -> skip;
+MULTI_LINE_COMMENT: '/*' .*? '*/' -> skip;
