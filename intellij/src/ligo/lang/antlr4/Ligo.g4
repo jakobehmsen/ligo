@@ -4,13 +4,20 @@ program: statement*;
 statement: assign | call;
 assign: (ID DOT)* name=ID ASSIGN_OP value=expression;
 call: name=ID OPEN_PAR (expression (COMMA expression)*)? CLOSE_PAR;
-expression: (id | number | string | object | call) accessChain;
+expression: addExpression;
+addExpression: mulExpression (ADD_OP mulExpression)*;
+mulExpression: leafExpression (MUL_OP leafExpression)*;
+leafExpression: 
+    (id | number | string | object | call | embeddedExpression) accessChain;
+embeddedExpression: OPEN_PAR expression CLOSE_PAR;
 accessChain: (DOT id)*;
 id: ID;
 number: NUMBER;
 string: STRING;
 object: OPEN_BRA statement* CLOSE_BRA;
 
+ADD_OP: '+' | '-';
+MUL_OP: '*' | '/';
 OPEN_BRA: '{';
 CLOSE_BRA: '}';
 ASSIGN_OP: '=';

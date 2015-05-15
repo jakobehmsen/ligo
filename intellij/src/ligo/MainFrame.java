@@ -72,10 +72,10 @@ public class MainFrame extends JFrame {
         getContentPane().add(splitPane, BorderLayout.CENTER);
 
         // Define initial functions
-        functionMap.define("add", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.add(rhs));
-        functionMap.define("sub", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.subtract(rhs));
-        functionMap.define("div", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.divide(rhs, MathContext.DECIMAL128));
-        functionMap.define("mul", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.multiply(rhs));
+        functionMap.define("+", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.add(rhs));
+        functionMap.define("-", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.subtract(rhs));
+        functionMap.define("/", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.divide(rhs, MathContext.DECIMAL128));
+        functionMap.define("*", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.multiply(rhs));
     }
 
     private final SimpleAttributeSet okAttributeSet;
@@ -248,7 +248,7 @@ public class MainFrame extends JFrame {
     private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self) {
         return ctx.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
             @Override
-            public Function<Object[], Cell> visitExpression(@NotNull LigoParser.ExpressionContext ctx) {
+            public Function<Object[], Cell> visitLeafExpression(@NotNull LigoParser.LeafExpressionContext ctx) {
                 Function<Object[], Cell> targetExpression = ctx.getChild(0).accept(this);
                 Function<Object[], Cell> expression = targetExpression;
 
@@ -300,6 +300,44 @@ public class MainFrame extends JFrame {
                 String id = ctx.ID().getText();
 
                 return args -> self.get(id);
+            }
+
+            @Override
+            public Function<Object[], Cell> visitAddExpression(@NotNull LigoParser.AddExpressionContext ctx) {
+                Function<Object[], Cell> lhs = parseExpression(ctx.mulExpression(0), self);
+
+                if (ctx.mulExpression().size() > 1) {
+                    for (int i = 1; i < ctx.mulExpression().size(); i++) {
+                        Function<Object[], Cell> rhsCell = parseExpression(ctx.mulExpression(i), self);
+
+                        Function<Object[], Cell> lhsCell = lhs;
+
+                        String operator = ctx.ADD_OP(i - 1).getText();
+
+                        lhs = createFunctionCall(operator, Arrays.asList(lhsCell, rhsCell));
+                    }
+                }
+
+                return lhs;
+            }
+
+            @Override
+            public Function<Object[], Cell> visitMulExpression(@NotNull LigoParser.MulExpressionContext ctx) {
+                Function<Object[], Cell> lhs = parseExpression(ctx.leafExpression(0), self);
+
+                if (ctx.leafExpression().size() > 1) {
+                    for (int i = 1; i < ctx.leafExpression().size(); i++) {
+                        Function<Object[], Cell> rhsCell = parseExpression(ctx.leafExpression(i), self);
+
+                        Function<Object[], Cell> lhsCell = lhs;
+
+                        String operator = ctx.MUL_OP(i - 1).getText();
+
+                        lhs = createFunctionCall(operator, Arrays.asList(lhsCell, rhsCell));
+                    }
+                }
+
+                return lhs;
             }
 
             @Override
