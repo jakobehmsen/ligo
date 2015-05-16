@@ -98,7 +98,7 @@ public class MainFrame extends JFrame {
                 color = Color.getColor(colorName);
                 if (color == null) {
                     try {
-                        color = (Color) Color.class.getField("colorName").get(null);
+                        color = (Color) Color.class.getField(colorName).get(null);
                     } catch (NoSuchFieldException e) {
                         e.printStackTrace();
                     } catch (IllegalAccessException e) {
