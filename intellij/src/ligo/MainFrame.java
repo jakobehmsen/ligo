@@ -11,6 +11,7 @@ import javax.swing.text.*;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.font.FontRenderContext;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -118,6 +119,17 @@ public class MainFrame extends JFrame {
                 .mapToInt(x -> parseStyle(x)).reduce(Font.PLAIN, (x, y) -> x | y);
 
             return new Font(fontFamily, style, size.intValue());
+        });
+
+        functionMap.define("stringSize", Font.class, String.class, (font, string) -> {
+            // Should be based on a concrete graphics object
+            Rectangle bounds = font.getStringBounds(string, new FontRenderContext(font.getTransform(), false, false)).getBounds();
+
+            HashMap<String, Object> boundsMap = new HashMap<>();
+            boundsMap.put("width", new BigDecimal(bounds.getWidth()));
+            boundsMap.put("height", new BigDecimal(bounds.getHeight()));
+
+            return boundsMap;
         });
 
         // Define initial procedures
