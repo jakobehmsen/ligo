@@ -76,6 +76,50 @@ public class MainFrame extends JFrame {
         functionMap.define("-", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.subtract(rhs));
         functionMap.define("/", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.divide(rhs, MathContext.DECIMAL128));
         functionMap.define("*", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.multiply(rhs));
+
+        functionMap.define("color", String.class, (colorName) -> {
+            Color color = null;
+
+            if (colorName.startsWith("#")) {
+                int red = -1, green = -1, blue = -1;
+
+                if (colorName.length() == 7) {
+                    red = parseHexColor(colorName.substring(1, 3));
+                    green = parseHexColor(colorName.substring(3, 5));
+                    blue = parseHexColor(colorName.substring(5, 7));
+                } else if (colorName.length() == 4) {
+                    red = parseHexColor(colorName.substring(1, 2));
+                    green = parseHexColor(colorName.substring(2, 3));
+                    blue = parseHexColor(colorName.substring(3, 4));
+                }
+
+                color = new Color(red, green, blue);
+            } else {
+                color = Color.getColor(colorName);
+                if (color == null) {
+                    try {
+                        color = (Color) Color.class.getField("colorName").get(null);
+                    } catch (NoSuchFieldException e) {
+                        e.printStackTrace();
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+
+            return color;
+        });
+    }
+
+    private int parseHexColor(String hex) {
+        switch(hex.length()) {
+            case 1:
+                return Integer.parseInt(hex, 16) * 16;
+            case 2:
+                return Integer.parseInt(hex, 16);
+        }
+
+        return -1;
     }
 
     private final SimpleAttributeSet okAttributeSet;
@@ -210,22 +254,34 @@ public class MainFrame extends JFrame {
                         }).collect(Collectors.toList());
                     }
 
-                    private Binding graphicsBinding;
+                    private Allocation<Consumer<Graphics>> graphicsAllocation;
 
                     private void update() {
                         if(Arrays.asList(arguments).stream().allMatch(x -> x != null)) {
                             switch(name) {
                                 case "fillRect": {
-                                    if(graphicsBinding != null)
-                                        graphicsBinding.remove();
+                                    if(graphicsAllocation == null)
+                                        graphicsAllocation = createGraphicsConsumer();
 
-                                    graphicsBinding = addGraphicsConsumer(g -> {
+                                    graphicsAllocation.set(g -> {
                                         BigDecimal x = (BigDecimal) arguments[0];
                                         BigDecimal y = (BigDecimal) arguments[1];
                                         BigDecimal width = (BigDecimal) arguments[2];
                                         BigDecimal height = (BigDecimal) arguments[3];
                                         g.fillRect(x.intValue(), y.intValue(), width.intValue(), height.intValue());
                                     });
+                                    break;
+                                } case "setColor": {
+                                    if(graphicsAllocation == null)
+                                        graphicsAllocation = createGraphicsConsumer();
+
+                                    graphicsAllocation.set(g -> {
+                                        Color color = (Color) arguments[0];
+
+                                        if (color != null)
+                                            g.setColor(color);
+                                    });
+                                    break;
                                 }
                             }
                         }
@@ -235,11 +291,19 @@ public class MainFrame extends JFrame {
         });
     }
 
-    private Binding addGraphicsConsumer(Consumer<Graphics> graphicsConsumer) {
-        graphicsConsumers.add(graphicsConsumer);
-        canvas.repaint();
+    private Allocation<Consumer<Graphics>> createGraphicsConsumer() {
+        int index = graphicsConsumers.size();
 
-        return () -> graphicsConsumers.remove(graphicsConsumer);
+        Allocation<Consumer<Graphics>> allocation = new Allocation<Consumer<Graphics>>() {
+            @Override
+            public void set(Consumer<Graphics> value) {
+                graphicsConsumers.set(index, value);
+                canvas.repaint();
+            }
+        };
+        graphicsConsumers.add(null);
+
+        return allocation;
     }
 
     private ArrayList<Consumer<Graphics>> graphicsConsumers = new ArrayList<>();
@@ -278,6 +342,13 @@ public class MainFrame extends JFrame {
             @Override
             public Function<Object[], Cell> visitNumber(@NotNull LigoParser.NumberContext ctx) {
                 BigDecimal value = new BigDecimal(ctx.NUMBER().getText());
+                return args -> new Singleton<>(value);
+            }
+
+            @Override
+            public Function<Object[], Cell> visitString(@NotNull LigoParser.StringContext ctx) {
+                String rawValue = ctx.STRING().getText().substring(1, ctx.STRING().getText().length() - 1);
+                String value = rawValue.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\\\", "\\");
                 return args -> new Singleton<>(value);
             }
 
