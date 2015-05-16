@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.*;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.*;
@@ -72,6 +73,7 @@ public class MainFrame extends JFrame {
         getContentPane().add(splitPane, BorderLayout.CENTER);
 
         // Define initial functions
+
         functionMap.define("+", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.add(rhs));
         functionMap.define("-", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.subtract(rhs));
         functionMap.define("/", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.divide(rhs, MathContext.DECIMAL128));
@@ -109,6 +111,26 @@ public class MainFrame extends JFrame {
 
             return color;
         });
+
+        functionMap.define("font", String.class, String.class, BigDecimal.class, (fontFamily, styleStr, size) -> {
+            int style = Arrays.asList(styleStr.split("\\s+")).stream()
+                .map(x -> x.trim()).filter(x -> x.length() > 0)
+                .mapToInt(x -> parseStyle(x)).reduce(Font.PLAIN, (x, y) -> x | y);
+
+            return new Font(fontFamily, style, size.intValue());
+        });
+
+        // Define initial procedures
+
+        rendererMap.define("setColor", Color.class, (g, color) -> g.setColor(color));
+        rendererMap.define("fillRect", BigDecimal.class, BigDecimal.class, BigDecimal.class, BigDecimal.class, (g, x, y, w, h) ->
+            g.fillRect(x.intValue(), y.intValue(), w.intValue(), h.intValue()));
+        rendererMap.define("fillOval", BigDecimal.class, BigDecimal.class, BigDecimal.class, BigDecimal.class, (g, x, y, w, h) ->
+            g.fillOval(x.intValue(), y.intValue(), w.intValue(), h.intValue()));
+        rendererMap.define("drawString", String.class, BigDecimal.class, BigDecimal.class, (g, str, x, y) ->
+            g.drawString(str, x.intValue(), y.intValue()));
+        rendererMap.define("setFont", Font.class, (g, font) ->
+            g.setFont(font));
     }
 
     private int parseHexColor(String hex) {
@@ -117,6 +139,19 @@ public class MainFrame extends JFrame {
                 return Integer.parseInt(hex, 16) * 16;
             case 2:
                 return Integer.parseInt(hex, 16);
+        }
+
+        return -1;
+    }
+
+    private int parseStyle(String style) {
+        switch (style.toLowerCase()) {
+            case "b":case "bold":
+                return Font.BOLD;
+            case "i":case "italic":
+                return Font.ITALIC;
+            case "p":case "plain":
+                return Font.PLAIN;
         }
 
         return -1;
@@ -258,32 +293,15 @@ public class MainFrame extends JFrame {
 
                     private void update() {
                         if(Arrays.asList(arguments).stream().allMatch(x -> x != null)) {
-                            switch(name) {
-                                case "fillRect": {
-                                    if(graphicsAllocation == null)
-                                        graphicsAllocation = createGraphicsConsumer();
+                            if(graphicsAllocation == null)
+                                graphicsAllocation = createGraphicsConsumer();
 
-                                    graphicsAllocation.set(g -> {
-                                        BigDecimal x = (BigDecimal) arguments[0];
-                                        BigDecimal y = (BigDecimal) arguments[1];
-                                        BigDecimal width = (BigDecimal) arguments[2];
-                                        BigDecimal height = (BigDecimal) arguments[3];
-                                        g.fillRect(x.intValue(), y.intValue(), width.intValue(), height.intValue());
-                                    });
-                                    break;
-                                } case "setColor": {
-                                    if(graphicsAllocation == null)
-                                        graphicsAllocation = createGraphicsConsumer();
+                            Class<?>[] parameterTypes = Arrays.asList(arguments).stream().map(x -> x.getClass()).toArray(s -> new Class<?>[s]);
+                            BiConsumer<Graphics, Object[]> renderer = rendererMap.resolve(name, parameterTypes);
 
-                                    graphicsAllocation.set(g -> {
-                                        Color color = (Color) arguments[0];
-
-                                        if (color != null)
-                                            g.setColor(color);
-                                    });
-                                    break;
-                                }
-                            }
+                            graphicsAllocation.set(graphics -> {
+                                renderer.accept(graphics, arguments);
+                            });
                         }
                     }
                 };
@@ -308,6 +326,7 @@ public class MainFrame extends JFrame {
 
     private ArrayList<Consumer<Graphics>> graphicsConsumers = new ArrayList<>();
     private FunctionMap functionMap = new FunctionMap();
+    private RendererMap rendererMap = new RendererMap();
 
     private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self) {
         return ctx.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
