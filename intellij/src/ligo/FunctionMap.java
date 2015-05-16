@@ -86,32 +86,6 @@ public class FunctionMap {
         }
     }
 
-    public static class Selector {
-        private final String name;
-        private final Class<?>[] parameterTypes;
-
-        private Selector(String name, Class<?>[] parameterTypes) {
-            this.name = name;
-            this.parameterTypes = parameterTypes;
-        }
-
-        @Override
-        public int hashCode() {
-            return name.hashCode() * Arrays.hashCode(parameterTypes);
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if(obj instanceof Selector) {
-                Selector objSelector = (Selector)obj;
-                return this.name.equals(objSelector.name) &&
-                    Arrays.equals(this.parameterTypes, objSelector.parameterTypes);
-            }
-
-            return false;
-        }
-    }
-
     public static class GenericSelector {
         private final String name;
         private final int arity;
@@ -157,6 +131,10 @@ public class FunctionMap {
 
     public <P0, P1, Return> void define(String name, Class<P0> param1, Class<P1> param2, BiFunction<P0, P1, Return> function) {
         define(name, new Class<?>[]{param1, param2}, args -> function.apply((P0)args[0], (P1)args[1]));
+    }
+
+    public <P0, P1, P2, Return> void define(String name, Class<P0> param1, Class<P1> param2, Class<P2> param3, TriFunction<P0, P1, P2, Return> function) {
+        define(name, new Class<?>[]{param1, param2, param3}, args -> function.apply((P0)args[0], (P1)args[1], (P2)args[2]));
     }
 
     private Hashtable<Selector, Binding> functionBindings = new Hashtable<>();
