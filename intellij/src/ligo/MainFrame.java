@@ -121,7 +121,7 @@ public class MainFrame extends JFrame {
             return new Font(fontFamily, style, size.intValue());
         });
 
-        functionMap.define("stringSize", Font.class, String.class, (font, string) -> {
+        functionMap.define("measureString", Font.class, String.class, (font, string) -> {
             // Should be based on a concrete graphics object
             Rectangle bounds = font.getStringBounds(string, new FontRenderContext(font.getTransform(), false, false)).getBounds();
 
@@ -215,6 +215,7 @@ public class MainFrame extends JFrame {
 
             LigoParser.ProgramContext programCtx = parser.program();
 
+            // Sometimes, a graphics object is need for some functions (so far measureString)
             run(programCtx);
 
             String result;
