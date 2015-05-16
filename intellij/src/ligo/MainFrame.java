@@ -12,6 +12,7 @@ import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.font.FontRenderContext;
+import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -123,9 +124,15 @@ public class MainFrame extends JFrame {
 
         functionMap.define("measureString", Font.class, String.class, (font, string) -> {
             // Should be based on a concrete graphics object
-            Rectangle bounds = font.getStringBounds(string, new FontRenderContext(font.getTransform(), false, false)).getBounds();
+            Graphics graphics = getGraphics();
+            FontMetrics fm = graphics.getFontMetrics(font);
+            Rectangle2D bounds = fm.getStringBounds(string, graphics);
+            //Rectangle bounds = font.getStringBounds(string, new FontRenderContext(font.getTransform(), false, false)).getBounds();
 
             HashMap<String, Object> boundsMap = new HashMap<>();
+
+            boundsMap.put("ascent", new BigDecimal(fm.getAscent()));
+            boundsMap.put("descent", new BigDecimal(fm.getDescent()));
             boundsMap.put("width", new BigDecimal(bounds.getWidth()));
             boundsMap.put("height", new BigDecimal(bounds.getHeight()));
 
