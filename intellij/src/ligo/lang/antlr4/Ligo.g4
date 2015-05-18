@@ -1,9 +1,11 @@
 grammar Ligo;
 
 program: statement*;
-statement: assign | call;
+statement: assign | call | functionDefinition;
 assign: (ID DOT)* name=ID ASSIGN_OP value=expression;
 call: name=ID OPEN_PAR (expression (COMMA expression)*)? CLOSE_PAR;
+functionDefinition: ID DEFINE_OP parameters? expression;
+parameters: PIPE ID* PIPE;
 expression: addExpression;
 addExpression: mulExpression (ADD_OP mulExpression)*;
 mulExpression: leafExpression (MUL_OP leafExpression)*;
@@ -21,6 +23,8 @@ MUL_OP: '*' | '/';
 OPEN_BRA: '{';
 CLOSE_BRA: '}';
 ASSIGN_OP: '=';
+DEFINE_OP: '=>';
+PIPE: '|';
 DOT: '.';
 COMMA: ',';
 OPEN_PAR: '(';

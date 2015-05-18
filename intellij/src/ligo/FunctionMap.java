@@ -112,6 +112,20 @@ public class FunctionMap {
         }
     }
 
+    private Hashtable<String, Binding> functionBodyBindings = new Hashtable<>();
+
+    public void define(String name, Class<?>[] parameterTypes, int localCount, Cell<Function<Object[], Object>> cellBody) {
+        Binding binding = functionBodyBindings.get(name);
+        if(binding != null)
+            binding.remove();
+
+        binding = cellBody.consume(cellBodyExpression -> {
+            define(name, parameterTypes, localCount, cellBodyExpression);
+        });
+
+        functionBodyBindings.put(name, binding);
+    }
+
     public void define(String name, Class<?>[] parameterTypes, int localCount, Function<Object[], Object> function) {
         GenericFunction genericFunction = getGenericFunction(new GenericSelector(name, parameterTypes.length));
         genericFunction.define(parameterTypes, new SpecificFunctionInfo(localCount, function));

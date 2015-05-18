@@ -11,7 +11,6 @@ import javax.swing.text.*;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
-import java.awt.font.FontRenderContext;
 import java.awt.geom.Rectangle2D;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -262,18 +261,19 @@ public class MainFrame extends JFrame {
 
     private void run(LigoParser.ProgramContext programCtx) {
         programCtx.statement().forEach(x -> {
-            Consumer<Object[]> statement = parseStatement(x, globals);
+            Consumer<Object[]> statement = parseStatement(x, globals, 0);
             statement.accept(new Object[]{});
         });
     }
 
     private DictCell globals = new DictCell();
 
-    private Consumer<Object[]> parseStatement(ParserRuleContext ctx, DictCell self) {
+    private Consumer<Object[]> parseStatement(ParserRuleContext ctx, DictCell self, int depth) {
         return ctx.accept(new LigoBaseVisitor<Consumer<Object[]>>() {
             @Override
             public Consumer<Object[]> visitAssign(@NotNull LigoParser.AssignContext ctx) {
-                Function<Object[], Cell> valueExpression = parseExpression(ctx.value, self);
+                //Function<Object[], Cell> valueExpression = parseExpression(ctx.value, self, depth);
+                Expression valueExpression = parseExpression(ctx.value, self, depth);
                 
                 return args -> {
                     DictCell target = self;
@@ -285,7 +285,7 @@ public class MainFrame extends JFrame {
 
                     String id = ctx.ID().get(ctx.ID().size() - 1).getText();
 
-                    Cell valueCell = valueExpression.apply(args);
+                    Cell valueCell = valueExpression.createValueCell(args);
                     target.put(id, valueCell);
                 };
             }
@@ -293,14 +293,15 @@ public class MainFrame extends JFrame {
             @Override
             public Consumer<Object[]> visitCall(@NotNull LigoParser.CallContext ctx) {
                 String name = ctx.ID().getText();
-                List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self)).collect(Collectors.toList());
+                //List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
+                List<Expression> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
 
                 Object[] arguments = new Object[argumentExpressions.size()];
 
                 return new Consumer<Object[]>() {
                     @Override
                     public void accept(Object[] args) {
-                        List<Cell> argumentCells = argumentExpressions.stream().map(x -> x.apply(args)).collect(Collectors.toList());
+                        List<Cell> argumentCells = argumentExpressions.stream().map(x -> x.createValueCell(args)).collect(Collectors.toList());
                         List<Binding> argumentBindings = IntStream.range(0, argumentExpressions.size()).mapToObj(i -> {
                             return argumentCells.get(i).consume(x -> {
                                 arguments[i] = x;
@@ -326,6 +327,34 @@ public class MainFrame extends JFrame {
                     }
                 };
             }
+
+            @Override
+            public Consumer<Object[]> visitFunctionDefinition(@NotNull LigoParser.FunctionDefinitionContext ctx) {
+                String functionName = ctx.ID().getText();
+                int functionDepth = depth + 1;
+
+                ArrayList<VariableInfo> functionLocals = new ArrayList<>();
+                if (ctx.parameters() != null)
+                    functionLocals.addAll(ctx.parameters().ID().stream().map(x -> new VariableInfo(Object.class, x.getText(), 0)).collect(Collectors.toList()));
+
+                ParserRuleContext bodyTree = ctx.expression();
+
+                Expression bodyCell = parseExpression(bodyTree, self, functionDepth);
+                //Function<Object[], Cell> bodyCell = parseExpression(bodyTree, self, functionDepth);
+
+                // Compare in relation to the given function depth
+                Stream<VariableInfo> parameters = functionLocals.stream().filter(x -> x.depth == functionDepth);
+                Class<?>[] parameterTypes = parameters.map(x -> x.type).toArray(s -> new Class<?>[s]);
+
+                if(parameterTypes.length > 0) {
+                    return args -> {
+                        Cell<Function<Object[], Object>> cellBody = bodyCell.createFunctionCell(args);
+                        functionMap.define(functionName, parameterTypes, functionLocals.size(), cellBody);
+                    };
+                } else {
+                    return null;
+                }
+            }
         });
     }
 
@@ -348,9 +377,10 @@ public class MainFrame extends JFrame {
     private FunctionMap functionMap = new FunctionMap();
     private RendererMap rendererMap = new RendererMap();
 
-    private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self) {
-        return ctx.accept(new LigoBaseVisitor<Function<Object[], Cell>>() {
-            @Override
+    //private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self, int depth) {
+    private Expression parseExpression(ParserRuleContext ctx, DictCell self, int depth) {
+        return ctx.accept(new LigoBaseVisitor<Expression>() {
+            /*@Override
             public Function<Object[], Cell> visitLeafExpression(@NotNull LigoParser.LeafExpressionContext ctx) {
                 Function<Object[], Cell> targetExpression = ctx.getChild(0).accept(this);
                 Function<Object[], Cell> expression = targetExpression;
@@ -376,49 +406,220 @@ public class MainFrame extends JFrame {
                 }
 
                 return expression;
-            }
+            }*/
 
             @Override
+            public Expression visitLeafExpression(@NotNull LigoParser.LeafExpressionContext ctx) {
+                Expression targetExpression = ctx.getChild(0).accept(this);
+                Expression expression = targetExpression;
+
+                // Be sensitive to the address, not the current cell at the address
+                for(LigoParser.IdContext idCtx: ctx.accessChain().id()) {
+                    String id = idCtx.getText();
+                    Expression targetExpressionTmp = targetExpression;
+                    expression = new Expression() {
+                        @Override
+                        public Cell createValueCell(Object[] args) {
+                            Cell target = targetExpressionTmp.createValueCell(args);
+                            return new Cell() {
+                                @Override
+                                public Binding consume(CellConsumer consumer) {
+                                    return target.consume(x -> {
+                                        Object value = ((Map<String, Object>)x).get(id);
+
+                                        consumer.next(value);
+                                    });
+                                }
+                            };
+                        }
+
+                        @Override
+                        public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                            Cell<Function<Object[], Object>> target = targetExpressionTmp.createFunctionCell(args);
+                            return new Cell<Function<Object[], Object>>() {
+                                @Override
+                                public Binding consume(CellConsumer<Function<Object[], Object>> consumer) {
+                                    return target.consume(x -> {
+                                        Function<Object[], Object> value = args -> ((Map<String, Object>)x.apply(args)).get(id);
+
+                                        consumer.next(value);
+                                    });
+                                }
+                            };
+                        }
+                    };
+                    targetExpression = expression;
+                }
+
+                return expression;
+            }
+
+            /*@Override
             public Function<Object[], Cell> visitNumber(@NotNull LigoParser.NumberContext ctx) {
                 BigDecimal value = new BigDecimal(ctx.NUMBER().getText());
                 return args -> new Singleton<>(value);
-            }
+            }*/
 
             @Override
+            public Expression visitNumber(@NotNull LigoParser.NumberContext ctx) {
+                BigDecimal value = new BigDecimal(ctx.NUMBER().getText());
+                //return args -> new Singleton<>(value);
+                return new Expression() {
+                    @Override
+                    public Cell createValueCell(Object[] args) {
+                        return new Singleton<>(value);
+                    }
+
+                    @Override
+                    public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                        return new Singleton<>(eArgs -> value);
+                    }
+                };
+            }
+
+            /*@Override
             public Function<Object[], Cell> visitString(@NotNull LigoParser.StringContext ctx) {
                 String rawValue = ctx.STRING().getText().substring(1, ctx.STRING().getText().length() - 1);
                 String value = rawValue.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\\\", "\\");
                 return args -> new Singleton<>(value);
-            }
+            }*/
 
             @Override
+            public Expression visitString(@NotNull LigoParser.StringContext ctx) {
+                String rawValue = ctx.STRING().getText().substring(1, ctx.STRING().getText().length() - 1);
+                String value = rawValue.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\\\", "\\");
+                //return args -> new Singleton<>(value);
+                return new Expression() {
+                    @Override
+                    public Cell createValueCell(Object[] args) {
+                        return new Singleton<>(value);
+                    }
+
+                    @Override
+                    public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                        return new Singleton<>(eArgs -> value);
+                    }
+                };
+            }
+
+            /*@Override
             public Function<Object[], Cell> visitObject(@NotNull LigoParser.ObjectContext ctx) {
+                Function<Object[], Cell<Function<Object[], Object>>> x = args -> {
+                    return new Cell<Function<Object[], Object>>() {
+                        @Override
+                        public Binding consume(CellConsumer<Function<Object[], Object>> consumer) {
+                            consumer.next(cArgs -> {
+                                DictCell obj = new DictCell();
+
+                                ctx.statement().forEach(x -> {
+                                    Consumer<Object[]> statement = parseStatement(x, obj, depth);
+                                    statement.accept(new Object[]{});
+                                });
+
+                                return obj;
+                            });
+
+                            return () -> { };
+                        }
+                    };
+                };
+
                 return args -> {
                     DictCell obj = new DictCell();
 
                     ctx.statement().forEach(x -> {
-                        Consumer<Object[]> statement = parseStatement(x, obj);
+                        Consumer<Object[]> statement = parseStatement(x, obj, depth);
                         statement.accept(new Object[]{});
                     });
 
                     return obj;
                 };
-            }
+            }*/
 
             @Override
+            public Expression visitObject(@NotNull LigoParser.ObjectContext ctx) {
+                /*Function<Object[], Cell<Function<Object[], Object>>> x = args -> {
+                    return new Cell<Function<Object[], Object>>() {
+                        @Override
+                        public Binding consume(CellConsumer<Function<Object[], Object>> consumer) {
+                            consumer.next(cArgs -> {
+                                DictCell obj = new DictCell();
+
+                                ctx.statement().forEach(x -> {
+                                    Consumer<Object[]> statement = parseStatement(x, obj, depth);
+                                    statement.accept(new Object[]{});
+                                });
+
+                                return obj;
+                            });
+
+                            return () -> { };
+                        }
+                    };
+                };*/
+
+                return new Expression() {
+                    @Override
+                    public Cell createValueCell(Object[] args) {
+                        DictCell obj = new DictCell();
+
+                        ctx.statement().forEach(x -> {
+                            Consumer<Object[]> statement = parseStatement(x, obj, depth);
+                            statement.accept(args);
+                        });
+
+                        return obj;
+                    }
+
+                    @Override
+                    public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                        return new Singleton<>(eArgs -> {
+                            DictCell obj = new DictCell();
+
+                            ctx.statement().forEach(x -> {
+                                Consumer<Object[]> statement = parseStatement(x, obj, depth);
+                                statement.accept(eArgs);
+                            });
+
+                            return obj;
+                        });
+                    }
+                };
+            }
+
+            /*@Override
             public Function<Object[], Cell> visitId(@NotNull LigoParser.IdContext ctx) {
                 String id = ctx.ID().getText();
 
                 return args -> self.get(id);
-            }
+            }*/
 
             @Override
+            public Expression visitId(@NotNull LigoParser.IdContext ctx) {
+                String id = ctx.ID().getText();
+
+                //return args -> self.get(id);
+                return new Expression() {
+                    @Override
+                    public Cell createValueCell(Object[] args) {
+                        return self.get(id);
+                    }
+
+                    @Override
+                    public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                        // Local variable?
+                        return null;
+                    }
+                };
+            }
+
+            /*@Override
             public Function<Object[], Cell> visitAddExpression(@NotNull LigoParser.AddExpressionContext ctx) {
-                Function<Object[], Cell> lhs = parseExpression(ctx.mulExpression(0), self);
+                Function<Object[], Cell> lhs = parseExpression(ctx.mulExpression(0), self, depth);
 
                 if (ctx.mulExpression().size() > 1) {
                     for (int i = 1; i < ctx.mulExpression().size(); i++) {
-                        Function<Object[], Cell> rhsCell = parseExpression(ctx.mulExpression(i), self);
+                        Function<Object[], Cell> rhsCell = parseExpression(ctx.mulExpression(i), self, depth);
 
                         Function<Object[], Cell> lhsCell = lhs;
 
@@ -429,15 +630,34 @@ public class MainFrame extends JFrame {
                 }
 
                 return lhs;
-            }
+            }*/
 
             @Override
+            public Expression visitAddExpression(@NotNull LigoParser.AddExpressionContext ctx) {
+                Expression lhs = parseExpression(ctx.mulExpression(0), self, depth);
+
+                if (ctx.mulExpression().size() > 1) {
+                    for (int i = 1; i < ctx.mulExpression().size(); i++) {
+                        Expression rhsCell = parseExpression(ctx.mulExpression(i), self, depth);
+
+                        Expression lhsCell = lhs;
+
+                        String operator = ctx.ADD_OP(i - 1).getText();
+
+                        lhs = createFunctionCall(operator, Arrays.asList(lhsCell, rhsCell));
+                    }
+                }
+
+                return lhs;
+            }
+
+            /*@Override
             public Function<Object[], Cell> visitMulExpression(@NotNull LigoParser.MulExpressionContext ctx) {
-                Function<Object[], Cell> lhs = parseExpression(ctx.leafExpression(0), self);
+                Function<Object[], Cell> lhs = parseExpression(ctx.leafExpression(0), self, depth);
 
                 if (ctx.leafExpression().size() > 1) {
                     for (int i = 1; i < ctx.leafExpression().size(); i++) {
-                        Function<Object[], Cell> rhsCell = parseExpression(ctx.leafExpression(i), self);
+                        Function<Object[], Cell> rhsCell = parseExpression(ctx.leafExpression(i), self, depth);
 
                         Function<Object[], Cell> lhsCell = lhs;
 
@@ -448,19 +668,46 @@ public class MainFrame extends JFrame {
                 }
 
                 return lhs;
-            }
+            }*/
 
             @Override
+            public Expression visitMulExpression(@NotNull LigoParser.MulExpressionContext ctx) {
+                Expression lhs = parseExpression(ctx.leafExpression(0), self, depth);
+
+                if (ctx.leafExpression().size() > 1) {
+                    for (int i = 1; i < ctx.leafExpression().size(); i++) {
+                        Expression rhsCell = parseExpression(ctx.leafExpression(i), self, depth);
+
+                        Expression lhsCell = lhs;
+
+                        String operator = ctx.MUL_OP(i - 1).getText();
+
+                        lhs = createFunctionCall(operator, Arrays.asList(lhsCell, rhsCell));
+                    }
+                }
+
+                return lhs;
+            }
+
+            /*@Override
             public Function<Object[], Cell> visitCall(@NotNull LigoParser.CallContext ctx) {
                 String name = ctx.ID().getText();
-                List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self)).collect(Collectors.toList());
+                List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
+
+                return createFunctionCall(name, argumentExpressions);
+            }*/
+
+            @Override
+            public Expression visitCall(@NotNull LigoParser.CallContext ctx) {
+                String name = ctx.ID().getText();
+                List<Expression> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
 
                 return createFunctionCall(name, argumentExpressions);
             }
         });
     }
 
-    private Function<Object[], Cell> createFunctionCall(String name, List<Function<Object[], Cell>> argumentExpressions) {
+    /*private Function<Object[], Cell> createFunctionCall(String name, List<Function<Object[], Cell>> argumentExpressions) {
         Object[] arguments = new Object[argumentExpressions.size()];
 
         return args -> new Cell() {
@@ -506,6 +753,66 @@ public class MainFrame extends JFrame {
                         }
                     }
                 };
+            }
+        };
+    }*/
+
+    private Expression createFunctionCall(String name, List<Expression> argumentExpressions) {
+        Object[] arguments = new Object[argumentExpressions.size()];
+
+        return new Expression() {
+            @Override
+            public Cell createValueCell(Object[] args) {
+                return new Cell() {
+                    @Override
+                    public Binding consume(CellConsumer consumer) {
+                        return new Binding() {
+                            FunctionMap.GenericFunction genericFunction = functionMap.getGenericFunction(new FunctionMap.GenericSelector(name, argumentExpressions.size()));
+                            Binding genericFunctionBinding = genericFunction.consume(f -> {
+                                this.functions = f;
+                                update();
+                            });
+                            Map<FunctionMap.SpecificSelector, FunctionMap.SpecificFunctionInfo> functions;
+                            List<Cell> argumentCells = argumentExpressions.stream().map(x -> x.createValueCell(args)).collect(Collectors.toList());
+                            List<Binding> argumentBindings = IntStream.range(0, argumentExpressions.size()).mapToObj(i -> {
+                                return argumentCells.get(i).consume(x -> {
+                                    arguments[i] = x;
+                                    update();
+                                });
+                            }).collect(Collectors.toList());
+
+                            @Override
+                            public void remove() {
+                                argumentBindings.forEach(x -> x.remove());
+                                genericFunctionBinding.remove();
+                            }
+
+                            private void update() {
+                                if(Arrays.asList(arguments).stream().allMatch(x -> x != null)) {
+                                    Object[] callArgs = arguments;
+                                    Class<?>[] parameterTypes = Arrays.asList(callArgs).stream().map(x -> x.getClass()).toArray(s -> new Class<?>[callArgs.length]);
+
+                                    if(functions != null) {
+                                        FunctionMap.SpecificFunctionInfo function = FunctionMap.GenericFunction.resolve(functions, parameterTypes);
+
+                                        if(function != null) {
+                                            Object[] locals = new Object[function.localCount];
+                                            System.arraycopy(callArgs, 0, locals, 0, callArgs.length);
+
+                                            Object next = function.body.apply(locals);
+                                            consumer.next(next);
+                                        }
+                                    }
+                                }
+                            }
+                        };
+                    }
+                };
+            }
+
+            @Override
+            public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                return null;
             }
         };
     }
