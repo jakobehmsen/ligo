@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.*;
 import java.util.stream.IntStream;
 
@@ -330,7 +331,7 @@ public class MainFrame extends JFrame {
 
             @Override
             public Consumer<Object[]> visitFunctionDefinition(@NotNull LigoParser.FunctionDefinitionContext ctx) {
-                String functionName = ctx.ID().getText();
+                String name = ctx.ID().getText();
                 int functionDepth = depth + 1;
 
                 ArrayList<VariableInfo> functionLocals = new ArrayList<>();
@@ -349,10 +350,14 @@ public class MainFrame extends JFrame {
                 if(parameterTypes.length > 0) {
                     return args -> {
                         Cell<Function<Object[], Object>> cellBody = bodyCell.createFunctionCell(args);
-                        functionMap.define(functionName, parameterTypes, functionLocals.size(), cellBody);
+                        functionMap.define(name, parameterTypes, functionLocals.size(), cellBody);
                     };
                 } else {
-                    return null;
+                    // Cell constructor definition
+                    return args -> {
+                        Supplier<Cell> constructor = () -> bodyCell.createValueCell(args);
+                        constructorMap.define(name, constructor);
+                    };
                 }
             }
         });
@@ -376,6 +381,7 @@ public class MainFrame extends JFrame {
     private ArrayList<Consumer<Graphics>> graphicsConsumers = new ArrayList<>();
     private FunctionMap functionMap = new FunctionMap();
     private RendererMap rendererMap = new RendererMap();
+    private ConstructorMap constructorMap = new ConstructorMap();
 
     //private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self, int depth) {
     private Expression parseExpression(ParserRuleContext ctx, DictCell self, int depth) {
@@ -702,7 +708,21 @@ public class MainFrame extends JFrame {
                 String name = ctx.ID().getText();
                 List<Expression> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
 
-                return createFunctionCall(name, argumentExpressions);
+                if(argumentExpressions.size() > 0)
+                    return createFunctionCall(name, argumentExpressions);
+                return new Expression() {
+                    @Override
+                    public Cell createValueCell(Object[] args) {
+                        Supplier<Cell> constructor = constructorMap.resolve(name);
+                        return constructor.get();
+                    }
+
+                    @Override
+                    public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                        // This shouldn't be supported, right?
+                        return null;
+                    }
+                };
             }
         });
     }
