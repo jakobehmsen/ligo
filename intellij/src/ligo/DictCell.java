@@ -15,12 +15,25 @@ public class DictCell implements Cell<Map<String, Object>> {
 
         consumer.next(getVersion());
 
-        return () -> consumers.remove(consumer);
+        return () -> {
+            consumers.remove(consumer);
+
+            if(consumers.size() == 0) {
+                // What if there are consumers of slots?
+                bindings.forEach(x -> x.remove());
+            }
+        };
     }
 
     private Map<String, Object> getVersion() {
         // Get version of map with slots that have values
         return slots.entrySet().stream().filter(x -> x.getValue().value != null).collect(Collectors.toMap(x -> x.getKey(), x -> x.getValue().value));
+    }
+
+    private ArrayList<Binding> bindings = new ArrayList<>();
+
+    public void addBinding(Binding binding) {
+        bindings.add(binding);
     }
 
     private class SlotCell implements Cell {
@@ -39,7 +52,7 @@ public class DictCell implements Cell<Map<String, Object>> {
             return () -> consumers.remove(consumer);
         }
 
-        public Binding set(Cell valueCell) {
+        public void set(Cell valueCell) {
             if(valueCellBinding != null)
                 valueCellBinding.remove();
 
@@ -49,12 +62,6 @@ public class DictCell implements Cell<Map<String, Object>> {
                 this.value = value;
                 update();
             });
-
-            return () -> {
-                valueCellBinding.remove();
-                valueCellBinding= null;
-                this.valueCell = null;
-            };
         }
 
         private void update() {
@@ -79,9 +86,9 @@ public class DictCell implements Cell<Map<String, Object>> {
         return slot;
     }
 
-    public Binding put(String id, Cell cellValue) {
+    public void put(String id, Cell cellValue) {
         SlotCell slot = getSlot(id);
-        return slot.set(cellValue);
+        slot.set(cellValue);
     }
 
     public Cell get(String id) {

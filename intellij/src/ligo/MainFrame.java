@@ -264,6 +264,7 @@ public class MainFrame extends JFrame {
         programCtx.statement().forEach(x -> {
             Function<Object[], Binding> statement = parseStatement(x, globals, 0);
             Binding binding = statement.apply(new Object[]{});
+            //globals.addBinding(binding);
             // What to do with the binding?
         });
     }
@@ -288,8 +289,8 @@ public class MainFrame extends JFrame {
                     String id = ctx.ID().get(ctx.ID().size() - 1).getText();
 
                     Cell valueCell = valueExpression.createValueCell(args);
-                    Binding slotBinding = target.put(id, valueCell);
-                    return slotBinding;
+                    target.put(id, valueCell);
+                    return () -> { };
                 };
             }
 
@@ -312,10 +313,14 @@ public class MainFrame extends JFrame {
                             });
                         }).collect(Collectors.toList());
 
-                        return () -> {
+                        Binding binding = () -> {
                             argumentBindings.forEach(x -> x.remove());
                             graphicsAllocation.remove();
                         };
+
+                        self.addBinding(binding);
+
+                        return binding;
                     }
 
                     private Allocation<Consumer<Graphics>> graphicsAllocation;
@@ -615,6 +620,7 @@ public class MainFrame extends JFrame {
                         ctx.statement().forEach(x -> {
                             Function<Object[], Binding> statement = parseStatement(x, obj, depth);
                             Binding binding = statement.apply(args);
+                            //obj.addBinding(binding);
                             // What to do with the binding?
                         });
 
