@@ -39,7 +39,7 @@ public class DictCell implements Cell<Map<String, Object>> {
             return () -> consumers.remove(consumer);
         }
 
-        public void set(Cell valueCell) {
+        public Binding set(Cell valueCell) {
             if(valueCellBinding != null)
                 valueCellBinding.remove();
 
@@ -49,6 +49,12 @@ public class DictCell implements Cell<Map<String, Object>> {
                 this.value = value;
                 update();
             });
+
+            return () -> {
+                valueCellBinding.remove();
+                valueCellBinding= null;
+                this.valueCell = null;
+            };
         }
 
         private void update() {
@@ -73,9 +79,9 @@ public class DictCell implements Cell<Map<String, Object>> {
         return slot;
     }
 
-    public void put(String id, Cell cellValue) {
+    public Binding put(String id, Cell cellValue) {
         SlotCell slot = getSlot(id);
-        slot.set(cellValue);
+        return slot.set(cellValue);
     }
 
     public Cell get(String id) {
