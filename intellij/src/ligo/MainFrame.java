@@ -76,6 +76,8 @@ public class MainFrame extends JFrame {
 
         // Define initial functions
 
+        functionMap.define("toString", Object.class, v -> v.toString());
+
         functionMap.define("+", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.add(rhs));
         functionMap.define("-", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.subtract(rhs));
         functionMap.define("/", BigDecimal.class, BigDecimal.class, (lhs, rhs) -> lhs.divide(rhs, MathContext.DECIMAL128));
@@ -828,7 +830,60 @@ public class MainFrame extends JFrame {
         };
     }*/
 
+    private static final String MACRO_COPY = "copy";
+
     private Expression createFunctionCall(String name, List<Expression> argumentExpressions) {
+        // Is macro?
+
+        if(name.equals(MACRO_COPY)) {
+            return new Expression() {
+                @Override
+                public Cell createValueCell(Object[] args) {
+                    Cell arg1 = argumentExpressions.get(0).createValueCell(args);
+
+                    return new Cell() {
+                        private Binding binding;
+
+                        @Override
+                        public Binding consume(CellConsumer consumer) {
+                            binding = arg1.consume(value -> {
+                                consumer.next(value);
+                            });
+
+                            binding.remove();
+
+                            /*
+
+                            Should be something like:
+
+                            Channel channel = arg1.createChannel();
+                            channel.consume(value -> {
+                                consumer.next(value);
+                                channel.remove();
+                            });
+
+                            or perhaps:
+
+                            Binding binding = arg1.consume(
+                                consumer.next(value);
+                                binding.remove();
+                            });
+                            binding.startConsumption();
+
+                            */
+
+                            return () -> { };
+                        }
+                    };
+                }
+
+                @Override
+                public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                    return null;
+                }
+            };
+        }
+
         Object[] arguments = new Object[argumentExpressions.size()];
 
         return new Expression() {
