@@ -278,20 +278,49 @@ public class MainFrame extends JFrame {
             @Override
             public Function<Object[], Binding> visitAssign(@NotNull LigoParser.AssignContext ctx) {
                 //Function<Object[], Cell> valueExpression = parseExpression(ctx.value, self, depth);
-                Expression valueExpression = parseExpression(ctx.value, self, depth);
+
+                String id = ctx.ID().get(ctx.ID().size() - 1).getText();
+
+                Expression valueExpressionTmp = parseExpression(ctx.value, self, depth);
+
+                DictCell targetTmp = self;
+
+                for(int i = 0; i < ctx.ID().size() - 1; i++) {
+                    String accessId = ctx.ID().get(i).getText();
+                    targetTmp = (DictCell)targetTmp.getValueCell(accessId);
+                }
+
+                String operatorName = null;
+
+                switch(ctx.op.getType()) {
+                    case LigoLexer.ASSIGN_OP_ADD:
+                        operatorName = "+";
+                        break;
+                    case LigoLexer.ASSIGN_OP_SUB:
+                        operatorName = "-";
+                        break;
+                    case LigoLexer.ASSIGN_OP_MUL:
+                        operatorName = "*";
+                        break;
+                    case LigoLexer.ASSIGN_OP_DIV:
+                        operatorName = "/";
+                        break;
+                }
+
+                if(operatorName != null) {
+                    valueExpressionTmp = createFunctionCall(operatorName, Arrays.asList(
+                        createFunctionCall(MACRO_COPY, Arrays.asList(createIdExpression(targetTmp, id))),
+                        valueExpressionTmp
+                    ));
+                }
+
+                Expression valueExpression = valueExpressionTmp;
+                DictCell target = targetTmp;
                 
                 return args -> {
-                    DictCell target = self;
-
-                    for(int i = 0; i < ctx.ID().size() - 1; i++) {
-                        String accessId = ctx.ID().get(i).getText();
-                        target = (DictCell)target.getValueCell(accessId);
-                    }
-
-                    String id = ctx.ID().get(ctx.ID().size() - 1).getText();
-
                     Cell valueCell = valueExpression.createValueCell(args);
                     target.put(id, valueCell);
+
                     return () -> { };
                 };
             }
@@ -657,19 +686,7 @@ public class MainFrame extends JFrame {
             public Expression visitId(@NotNull LigoParser.IdContext ctx) {
                 String id = ctx.ID().getText();
 
-                //return args -> self.get(id);
-                return new Expression() {
-                    @Override
-                    public Cell createValueCell(Object[] args) {
-                        return self.get(id);
-                    }
-
-                    @Override
-                    public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
-                        // Local variable?
-                        return null;
-                    }
-                };
+                return createIdExpression(self, id);
             }
 
             /*@Override
@@ -778,6 +795,21 @@ public class MainFrame extends JFrame {
                 };
             }
         });
+    }
+
+    private Expression createIdExpression(DictCell self, String id) {
+        return new Expression() {
+            @Override
+            public Cell createValueCell(Object[] args) {
+                return self.get(id);
+            }
+
+            @Override
+            public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
+                // Local variable?
+                return null;
+            }
+        };
     }
 
     /*private Function<Object[], Cell> createFunctionCall(String name, List<Function<Object[], Cell>> argumentExpressions) {

@@ -2,7 +2,10 @@ grammar Ligo;
 
 program: statement*;
 statement: assign | call | functionDefinition;
-assign: (ID DOT)* name=ID ASSIGN_OP value=expression;
+assign: 
+    (ID DOT)* name=ID 
+    op=(ASSIGN_OP | ASSIGN_OP_ADD | ASSIGN_OP_SUB | ASSIGN_OP_MUL | ASSIGN_OP_DIV) 
+    value=expression;
 call: name=ID OPEN_PAR (expression (COMMA expression)*)? CLOSE_PAR;
 functionDefinition: ID DEFINE_OP parameters? expression;
 parameters: PIPE ID* PIPE;
@@ -23,6 +26,10 @@ MUL_OP: '*' | '/';
 OPEN_BRA: '{';
 CLOSE_BRA: '}';
 ASSIGN_OP: '=';
+ASSIGN_OP_ADD: '+=';
+ASSIGN_OP_SUB: '-=';
+ASSIGN_OP_MUL: '*=';
+ASSIGN_OP_DIV: '/=';
 DEFINE_OP: '=>';
 PIPE: '|';
 DOT: '.';
