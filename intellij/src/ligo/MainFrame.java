@@ -264,8 +264,8 @@ public class MainFrame extends JFrame {
 
     private void run(LigoParser.ProgramContext programCtx) {
         programCtx.statement().forEach(x -> {
-            Function<Object[], Binding> statement = parseStatement(x, globals, 0);
-            Binding binding = statement.apply(new Object[]{});
+            Consumer<Object[]> statement = parseStatement(x, globals, 0);
+            statement.accept(new Object[]{});
             //globals.addBinding(binding);
             // What to do with the binding?
         });
@@ -273,12 +273,10 @@ public class MainFrame extends JFrame {
 
     private DictCell globals = new DictCell();
 
-    private Function<Object[], Binding> parseStatement(ParserRuleContext ctx, DictCell self, int depth) {
-        return ctx.accept(new LigoBaseVisitor<Function<Object[], Binding>>() {
+    private Consumer<Object[]> parseStatement(ParserRuleContext ctx, DictCell self, int depth) {
+        return ctx.accept(new LigoBaseVisitor<Consumer<Object[]>>() {
             @Override
-            public Function<Object[], Binding> visitAssign(@NotNull LigoParser.AssignContext ctx) {
-                //Function<Object[], Cell> valueExpression = parseExpression(ctx.value, self, depth);
-
+            public Consumer<Object[]> visitAssign(@NotNull LigoParser.AssignContext ctx) {
                 String id = ctx.ID().get(ctx.ID().size() - 1).getText();
 
                 Expression valueExpressionTmp = parseExpression(ctx.value, self, depth);
@@ -320,22 +318,20 @@ public class MainFrame extends JFrame {
                 return args -> {
                     Cell valueCell = valueExpression.createValueCell(args);
                     target.put(id, valueCell);
-
-                    return () -> { };
                 };
             }
 
             @Override
-            public Function<Object[], Binding> visitCall(@NotNull LigoParser.CallContext ctx) {
+            public Consumer<Object[]> visitCall(@NotNull LigoParser.CallContext ctx) {
                 String name = ctx.ID().getText();
                 //List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
                 List<Expression> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
 
                 Object[] arguments = new Object[argumentExpressions.size()];
 
-                return new Function<Object[], Binding>() {
+                return new Consumer<Object[]>() {
                     @Override
-                    public Binding apply(Object[] args) {
+                    public void accept(Object[] args) {
                         List<Cell> argumentCells = argumentExpressions.stream().map(x -> x.createValueCell(args)).collect(Collectors.toList());
                         List<Binding> argumentBindings = IntStream.range(0, argumentExpressions.size()).mapToObj(i -> {
                             return argumentCells.get(i).consume(x -> {
@@ -350,8 +346,6 @@ public class MainFrame extends JFrame {
                         };
 
                         self.addBinding(binding);
-
-                        return binding;
                     }
 
                     private Allocation<Consumer<Graphics>> graphicsAllocation;
@@ -373,7 +367,7 @@ public class MainFrame extends JFrame {
             }
 
             @Override
-            public Function<Object[], Binding> visitFunctionDefinition(@NotNull LigoParser.FunctionDefinitionContext ctx) {
+            public Consumer<Object[]> visitFunctionDefinition(@NotNull LigoParser.FunctionDefinitionContext ctx) {
                 String name = ctx.ID().getText();
                 int functionDepth = depth + 1;
 
@@ -394,20 +388,12 @@ public class MainFrame extends JFrame {
                     return args -> {
                         Cell<Function<Object[], Object>> cellBody = bodyCell.createFunctionCell(args);
                         functionMap.define(name, parameterTypes, functionLocals.size(), cellBody);
-
-                        return () -> {
-                            // How to remove a function definition? Should it be possible?
-                        };
                     };
                 } else {
                     // Cell constructor definition
                     return args -> {
                         Supplier<Cell> constructor = () -> bodyCell.createValueCell(args);
                         constructorMap.define(name, constructor);
-
-                        return () -> {
-                            // How to remove a Cell constructor definition? Should it be possible?
-                        };
                     };
                 }
             }
@@ -649,10 +635,8 @@ public class MainFrame extends JFrame {
                         DictCell obj = new DictCell();
 
                         ctx.statement().forEach(x -> {
-                            Function<Object[], Binding> statement = parseStatement(x, obj, depth);
-                            Binding binding = statement.apply(args);
-                            //obj.addBinding(binding);
-                            // What to do with the binding?
+                            Consumer<Object[]> statement = parseStatement(x, obj, depth);
+                            statement.accept(args);
                         });
 
                         return obj;
@@ -664,9 +648,8 @@ public class MainFrame extends JFrame {
                             DictCell obj = new DictCell();
 
                             ctx.statement().forEach(x -> {
-                                Function<Object[], Binding> statement = parseStatement(x, obj, depth);
-                                Binding binding = statement.apply(eArgs);
-                                // What to do with the binding?
+                                Consumer<Object[]> statement = parseStatement(x, obj, depth);
+                                statement.accept(eArgs);
                             });
 
                             return obj;
