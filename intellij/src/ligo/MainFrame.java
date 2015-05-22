@@ -266,8 +266,6 @@ public class MainFrame extends JFrame {
         programCtx.statement().forEach(x -> {
             Consumer<Object[]> statement = parseStatement(x, globals, 0);
             statement.accept(new Object[]{});
-            //globals.addBinding(binding);
-            // What to do with the binding?
         });
     }
 
@@ -324,7 +322,6 @@ public class MainFrame extends JFrame {
             @Override
             public Consumer<Object[]> visitCall(@NotNull LigoParser.CallContext ctx) {
                 String name = ctx.ID().getText();
-                //List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
                 List<Expression> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
 
                 Object[] arguments = new Object[argumentExpressions.size()];
@@ -378,7 +375,6 @@ public class MainFrame extends JFrame {
                 ParserRuleContext bodyTree = ctx.expression();
 
                 Expression bodyCell = parseExpression(bodyTree, self, functionDepth);
-                //Function<Object[], Cell> bodyCell = parseExpression(bodyTree, self, functionDepth);
 
                 // Compare in relation to the given function depth
                 Stream<VariableInfo> parameters = functionLocals.stream().filter(x -> x.depth == functionDepth);
@@ -421,21 +417,6 @@ public class MainFrame extends JFrame {
     }
 
     private Allocation<Consumer<Graphics>> createGraphicsConsumer() {
-        /*int index = graphicsConsumers.size();
-
-        Allocation<Consumer<Graphics>> allocation = new Allocation<Consumer<Graphics>>() {
-            @Override
-            public void set(Consumer<Graphics> value) {
-                graphicsConsumers.set(index, value);
-                canvas.repaint();
-            }
-
-            @Override
-            public void remove() {
-
-            }
-        };*/
-
         RendererAllocation allocation = new RendererAllocation();
 
         graphicsConsumers.add(allocation);
@@ -448,37 +429,8 @@ public class MainFrame extends JFrame {
     private RendererMap rendererMap = new RendererMap();
     private ConstructorMap constructorMap = new ConstructorMap();
 
-    //private Function<Object[], Cell> parseExpression(ParserRuleContext ctx, DictCell self, int depth) {
     private Expression parseExpression(ParserRuleContext ctx, DictCell self, int depth) {
         return ctx.accept(new LigoBaseVisitor<Expression>() {
-            /*@Override
-            public Function<Object[], Cell> visitLeafExpression(@NotNull LigoParser.LeafExpressionContext ctx) {
-                Function<Object[], Cell> targetExpression = ctx.getChild(0).accept(this);
-                Function<Object[], Cell> expression = targetExpression;
-
-                // Be sensitive to the address, not the current cell at the address
-                for(LigoParser.IdContext idCtx: ctx.accessChain().id()) {
-                    String id = idCtx.getText();
-                    Function<Object[], Cell> targetExpressionTmp = targetExpression;
-                    expression = args -> {
-                        Cell target = targetExpressionTmp.apply(args);
-                        return new Cell() {
-                            @Override
-                            public Binding consume(CellConsumer consumer) {
-                                return target.consume(x -> {
-                                    Object value = ((Map<String, Object>)x).get(id);
-
-                                    consumer.next(value);
-                                });
-                            }
-                        };
-                    };
-                    targetExpression = expression;
-                }
-
-                return expression;
-            }*/
-
             @Override
             public Expression visitLeafExpression(@NotNull LigoParser.LeafExpressionContext ctx) {
                 Expression targetExpression = ctx.getChild(0).accept(this);
@@ -525,12 +477,6 @@ public class MainFrame extends JFrame {
                 return expression;
             }
 
-            /*@Override
-            public Function<Object[], Cell> visitNumber(@NotNull LigoParser.NumberContext ctx) {
-                BigDecimal value = new BigDecimal(ctx.NUMBER().getText());
-                return args -> new Singleton<>(value);
-            }*/
-
             @Override
             public Expression visitNumber(@NotNull LigoParser.NumberContext ctx) {
                 BigDecimal value = new BigDecimal(ctx.NUMBER().getText());
@@ -548,18 +494,11 @@ public class MainFrame extends JFrame {
                 };
             }
 
-            /*@Override
-            public Function<Object[], Cell> visitString(@NotNull LigoParser.StringContext ctx) {
-                String rawValue = ctx.STRING().getText().substring(1, ctx.STRING().getText().length() - 1);
-                String value = rawValue.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\\\", "\\");
-                return args -> new Singleton<>(value);
-            }*/
-
             @Override
             public Expression visitString(@NotNull LigoParser.StringContext ctx) {
                 String rawValue = ctx.STRING().getText().substring(1, ctx.STRING().getText().length() - 1);
                 String value = rawValue.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\\\", "\\");
-                //return args -> new Singleton<>(value);
+
                 return new Expression() {
                     @Override
                     public Cell createValueCell(Object[] args) {
@@ -573,62 +512,8 @@ public class MainFrame extends JFrame {
                 };
             }
 
-            /*@Override
-            public Function<Object[], Cell> visitObject(@NotNull LigoParser.ObjectContext ctx) {
-                Function<Object[], Cell<Function<Object[], Object>>> x = args -> {
-                    return new Cell<Function<Object[], Object>>() {
-                        @Override
-                        public Binding consume(CellConsumer<Function<Object[], Object>> consumer) {
-                            consumer.next(cArgs -> {
-                                DictCell obj = new DictCell();
-
-                                ctx.statement().forEach(x -> {
-                                    Consumer<Object[]> statement = parseStatement(x, obj, depth);
-                                    statement.accept(new Object[]{});
-                                });
-
-                                return obj;
-                            });
-
-                            return () -> { };
-                        }
-                    };
-                };
-
-                return args -> {
-                    DictCell obj = new DictCell();
-
-                    ctx.statement().forEach(x -> {
-                        Consumer<Object[]> statement = parseStatement(x, obj, depth);
-                        statement.accept(new Object[]{});
-                    });
-
-                    return obj;
-                };
-            }*/
-
             @Override
             public Expression visitObject(@NotNull LigoParser.ObjectContext ctx) {
-                /*Function<Object[], Cell<Function<Object[], Object>>> x = args -> {
-                    return new Cell<Function<Object[], Object>>() {
-                        @Override
-                        public Binding consume(CellConsumer<Function<Object[], Object>> consumer) {
-                            consumer.next(cArgs -> {
-                                DictCell obj = new DictCell();
-
-                                ctx.statement().forEach(x -> {
-                                    Consumer<Object[]> statement = parseStatement(x, obj, depth);
-                                    statement.accept(new Object[]{});
-                                });
-
-                                return obj;
-                            });
-
-                            return () -> { };
-                        }
-                    };
-                };*/
-
                 return new Expression() {
                     @Override
                     public Cell createValueCell(Object[] args) {
@@ -658,38 +543,12 @@ public class MainFrame extends JFrame {
                 };
             }
 
-            /*@Override
-            public Function<Object[], Cell> visitId(@NotNull LigoParser.IdContext ctx) {
-                String id = ctx.ID().getText();
-
-                return args -> self.get(id);
-            }*/
-
             @Override
             public Expression visitId(@NotNull LigoParser.IdContext ctx) {
                 String id = ctx.ID().getText();
 
                 return createIdExpression(self, id);
             }
-
-            /*@Override
-            public Function<Object[], Cell> visitAddExpression(@NotNull LigoParser.AddExpressionContext ctx) {
-                Function<Object[], Cell> lhs = parseExpression(ctx.mulExpression(0), self, depth);
-
-                if (ctx.mulExpression().size() > 1) {
-                    for (int i = 1; i < ctx.mulExpression().size(); i++) {
-                        Function<Object[], Cell> rhsCell = parseExpression(ctx.mulExpression(i), self, depth);
-
-                        Function<Object[], Cell> lhsCell = lhs;
-
-                        String operator = ctx.ADD_OP(i - 1).getText();
-
-                        lhs = createFunctionCall(operator, Arrays.asList(lhsCell, rhsCell));
-                    }
-                }
-
-                return lhs;
-            }*/
 
             @Override
             public Expression visitAddExpression(@NotNull LigoParser.AddExpressionContext ctx) {
@@ -710,25 +569,6 @@ public class MainFrame extends JFrame {
                 return lhs;
             }
 
-            /*@Override
-            public Function<Object[], Cell> visitMulExpression(@NotNull LigoParser.MulExpressionContext ctx) {
-                Function<Object[], Cell> lhs = parseExpression(ctx.leafExpression(0), self, depth);
-
-                if (ctx.leafExpression().size() > 1) {
-                    for (int i = 1; i < ctx.leafExpression().size(); i++) {
-                        Function<Object[], Cell> rhsCell = parseExpression(ctx.leafExpression(i), self, depth);
-
-                        Function<Object[], Cell> lhsCell = lhs;
-
-                        String operator = ctx.MUL_OP(i - 1).getText();
-
-                        lhs = createFunctionCall(operator, Arrays.asList(lhsCell, rhsCell));
-                    }
-                }
-
-                return lhs;
-            }*/
-
             @Override
             public Expression visitMulExpression(@NotNull LigoParser.MulExpressionContext ctx) {
                 Expression lhs = parseExpression(ctx.leafExpression(0), self, depth);
@@ -747,14 +587,6 @@ public class MainFrame extends JFrame {
 
                 return lhs;
             }
-
-            /*@Override
-            public Function<Object[], Cell> visitCall(@NotNull LigoParser.CallContext ctx) {
-                String name = ctx.ID().getText();
-                List<Function<Object[], Cell>> argumentExpressions = ctx.expression().stream().map(x -> parseExpression(x, self, depth)).collect(Collectors.toList());
-
-                return createFunctionCall(name, argumentExpressions);
-            }*/
 
             @Override
             public Expression visitCall(@NotNull LigoParser.CallContext ctx) {
@@ -795,56 +627,6 @@ public class MainFrame extends JFrame {
         };
     }
 
-    /*private Function<Object[], Cell> createFunctionCall(String name, List<Function<Object[], Cell>> argumentExpressions) {
-        Object[] arguments = new Object[argumentExpressions.size()];
-
-        return args -> new Cell() {
-            @Override
-            public Binding consume(CellConsumer consumer) {
-                return new Binding() {
-                    FunctionMap.GenericFunction genericFunction = functionMap.getGenericFunction(new FunctionMap.GenericSelector(name, argumentExpressions.size()));
-                    Binding genericFunctionBinding = genericFunction.consume(f -> {
-                        this.functions = f;
-                        update();
-                    });
-                    Map<FunctionMap.SpecificSelector, FunctionMap.SpecificFunctionInfo> functions;
-                    List<Cell> argumentCells = argumentExpressions.stream().map(x -> x.apply(args)).collect(Collectors.toList());
-                    List<Binding> argumentBindings = IntStream.range(0, argumentExpressions.size()).mapToObj(i -> {
-                        return argumentCells.get(i).consume(x -> {
-                            arguments[i] = x;
-                            update();
-                        });
-                    }).collect(Collectors.toList());
-
-                    @Override
-                    public void remove() {
-                        argumentBindings.forEach(x -> x.remove());
-                        genericFunctionBinding.remove();
-                    }
-
-                    private void update() {
-                        if(Arrays.asList(arguments).stream().allMatch(x -> x != null)) {
-                            Object[] callArgs = arguments;
-                            Class<?>[] parameterTypes = Arrays.asList(callArgs).stream().map(x -> x.getClass()).toArray(s -> new Class<?>[callArgs.length]);
-
-                            if(functions != null) {
-                                FunctionMap.SpecificFunctionInfo function = FunctionMap.GenericFunction.resolve(functions, parameterTypes);
-
-                                if(function != null) {
-                                    Object[] locals = new Object[function.localCount];
-                                    System.arraycopy(callArgs, 0, locals, 0, callArgs.length);
-
-                                    Object next = function.body.apply(locals);
-                                    consumer.next(next);
-                                }
-                            }
-                        }
-                    }
-                };
-            }
-        };
-    }*/
-
     private static final String MACRO_COPY = "copy";
 
     private Expression createFunctionCall(String name, List<Expression> argumentExpressions) {
@@ -879,11 +661,20 @@ public class MainFrame extends JFrame {
 
                             or perhaps:
 
-                            Binding binding = arg1.consume(
+                            Binding binding = arg1.consume(value -> {
                                 consumer.next(value);
                                 binding.remove();
                             });
                             binding.startConsumption();
+
+                            "Dual-bindings2?
+
+                            A binding could be supplied to the consumer, as well as to the call-site:
+
+                            Binding binding = arg1.consume((binding, value) -> {
+                                consumer.next(value);
+                                binding.remove();
+                            });
 
                             */
 
