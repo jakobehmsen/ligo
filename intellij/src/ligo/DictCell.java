@@ -6,8 +6,13 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class DictCell implements Cell<Map<String, Object>> {
+    private String tag;
     private ArrayList<CellConsumer> consumers = new ArrayList<>();
     private Hashtable<String, SlotCell> slots = new Hashtable<>();
+
+    public DictCell(String tag) {
+        this.tag = tag;
+    }
 
     @Override
     public Binding consume(CellConsumer<Map<String, Object>> consumer) {

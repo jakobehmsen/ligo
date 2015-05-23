@@ -1,19 +1,20 @@
 grammar Ligo;
 
 program: statement*;
-statement: assign | call | functionDefinition;
+statement: assign | call | constructorDefinition | functionDefinition;
 assign: 
     (ID DOT)* name=ID 
     op=(ASSIGN_OP | ASSIGN_OP_ADD | ASSIGN_OP_SUB | ASSIGN_OP_MUL | ASSIGN_OP_DIV) 
     value=expression;
 call: name=ID OPEN_PAR (expression (COMMA expression)*)? CLOSE_PAR;
+constructorDefinition: ID DEFINE_OP object;
 functionDefinition: ID DEFINE_OP parameters? expression;
 parameters: PIPE ID* PIPE;
 expression: addExpression;
 addExpression: mulExpression (ADD_OP mulExpression)*;
 mulExpression: leafExpression (MUL_OP leafExpression)*;
 leafExpression: 
-    (id | number | string | object | call | embeddedExpression) accessChain;
+    (id | number | string | call | embeddedExpression) accessChain;
 embeddedExpression: OPEN_PAR expression CLOSE_PAR;
 accessChain: (DOT id)*;
 id: ID;

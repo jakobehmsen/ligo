@@ -269,7 +269,7 @@ public class MainFrame extends JFrame {
         });
     }
 
-    private DictCell globals = new DictCell();
+    private DictCell globals = new DictCell("Globals");
 
     private Consumer<Object[]> parseStatement(ParserRuleContext ctx, DictCell self, int depth) {
         return ctx.accept(new LigoBaseVisitor<Consumer<Object[]>>() {
@@ -360,6 +360,26 @@ public class MainFrame extends JFrame {
                             });
                         }
                     }
+                };
+            }
+
+            @Override
+            public Consumer<Object[]> visitConstructorDefinition(@NotNull LigoParser.ConstructorDefinitionContext ctx) {
+                String name = ctx.ID().getText();
+
+                // Cell constructor definition
+                return args -> {
+                    Supplier<Cell> constructor = () -> {
+                        DictCell obj = new DictCell(name);
+
+                        ctx.object().statement().forEach(x -> {
+                            Consumer<Object[]> statement = parseStatement(x, obj, depth);
+                            statement.accept(args);
+                        });
+
+                        return obj;
+                    };
+                    constructorMap.define(name, constructor);
                 };
             }
 
@@ -508,37 +528,6 @@ public class MainFrame extends JFrame {
                     @Override
                     public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
                         return new Singleton<>(eArgs -> value);
-                    }
-                };
-            }
-
-            @Override
-            public Expression visitObject(@NotNull LigoParser.ObjectContext ctx) {
-                return new Expression() {
-                    @Override
-                    public Cell createValueCell(Object[] args) {
-                        DictCell obj = new DictCell();
-
-                        ctx.statement().forEach(x -> {
-                            Consumer<Object[]> statement = parseStatement(x, obj, depth);
-                            statement.accept(args);
-                        });
-
-                        return obj;
-                    }
-
-                    @Override
-                    public Cell<Function<Object[], Object>> createFunctionCell(Object[] args) {
-                        return new Singleton<>(eArgs -> {
-                            DictCell obj = new DictCell();
-
-                            ctx.statement().forEach(x -> {
-                                Consumer<Object[]> statement = parseStatement(x, obj, depth);
-                                statement.accept(eArgs);
-                            });
-
-                            return obj;
-                        });
                     }
                 };
             }
